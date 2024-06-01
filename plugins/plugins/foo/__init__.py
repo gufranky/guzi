@@ -1,6 +1,8 @@
 from nonebot import on_command
-from nonebot_plugin_alconna.uniseg import UniMessage, At
+from nonebot_plugin_alconna.uniseg import UniMessage, At,File
 from nonebot.adapters.onebot.v11 import Bot, Event
+from nonebot.adapters.onebot.v11 import (MessageSegment)
+from nonebot.params import ArgPlainText
 import sqlite3
 from nonebot import require
 from nonebot.adapters import Message
@@ -125,7 +127,7 @@ async def handle_howmuch(event:Event,args: Message = CommandArg()):
 
 tiaopei=on_command("调配")
 @tiaopei.handle()
-async def handle_tiaopei(event:Event,args: Message = CommandArg()):
+async def handle_tiaopei(bot:Bot,event:Event,args: Message = CommandArg()):
     arg=args.extract_plain_text()
     arg=arg.split(' ')
     id=arg[0]
@@ -155,7 +157,49 @@ async def handle_tiaopei(event:Event,args: Message = CommandArg()):
         await tiaopei.send("您没有权限调配哦")
     cursor.close()
     conn.close()
+def mixit(dic):
+    stri=''
+    for key in dic:
+        stri+=key+'*'+str(dic[key])+' '
+    return stri
 hebin=on_command("合并")
 @hebin.handle()
-async def handle_hebin(event:Event,args: Message = CommandArg()):
-    pass        
+async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    arg=arg.split(' ')
+    sb_name=arg[0]
+    group_id = event.get_session_id()
+    data_dir = store.get_data_dir("guzi")
+    pure_data_dir = data_dir.as_posix()
+    true_group_id = group_id.split('_')[1]
+    pblist=arg[1:]
+    sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+    conn = sqlite3.connect(sqaddress)
+    cn_list={}
+    cn_price={}
+    cursor = conn.cursor()
+    for pb in pblist:
+        cursor.execute("SELECT * FROM xize WHERE xh = ? AND shangpai=1", (pb,))
+        result = cursor.fetchall()
+        for row in result:
+            if row[0] not in cn_list:
+                cn_list[row[0]]={row[1]:1}
+                cn_price[row[0]]=row[2]
+            else:
+                if row[1] not in cn_list[row[0]]:
+                    cn_list[row[0]][row[1]]=1
+                else:
+                    cn_list[row[0]][row[1]]+=1
+                cn_price[row[0]]+=row[2]
+    cursor.close()
+    conn.close()
+    cn_pb={}
+    for key in cn_list:
+        cn_pb[key]=mixit(cn_list[key])
+    cn_wx_price={  }
+    for key in cn_price:
+        cn_wx_price[key]=cn_price[key]+0.01 if cn_price[key]<100 else cn_price[key]*1.01
+    df = pd.DataFrame({'cn': list(cn_pb.keys()), '物品': list(cn_pb.values()), '支付宝价格': list(cn_price.values()), '微信价格': list(cn_wx_price.values())})
+    df.to_excel(pure_data_dir +'/'+true_group_id+'_'+sb_name+'.xlsx', index=False)
+    await hebin.send("合并成功")
+    await bot.upload_group_file(group_id=int(true_group_id),file=pure_data_dir +'/'+true_group_id+'_'+sb_name+'.xlsx',name=sb_name+'.xlsx')
