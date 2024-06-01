@@ -212,11 +212,12 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
         arg=args.extract_plain_text()
         arg=arg.split(' ')
         sb_name=arg[0]
+        dandian=arg[1]
         group_id = event.get_session_id()
         data_dir = store.get_data_dir("guzi")
         pure_data_dir = data_dir.as_posix()
         true_group_id = group_id.split('_')[1]
-        pblist=arg[1:]
+        pblist=arg[2:]
         sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
         conn = sqlite3.connect(sqaddress)
         cn_list={}
@@ -233,13 +234,13 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
                 for row in result:
                     if row[0] not in cn_list:
                         cn_list[row[0]]={row[1]:1}
-                        cn_price[row[0]]=row[2]
+                        cn_price[row[0]]=row[2] if dandian=='-1' else int(dandian)
                     else:
                         if row[1] not in cn_list[row[0]]:
                             cn_list[row[0]][row[1]]=1
                         else:
                             cn_list[row[0]][row[1]]+=1
-                        cn_price[row[0]]+=row[2]
+                        cn_price[row[0]]+=row[2] if dandian=='-1' else int(dandian)
             else:
                 await hebin.send("有排表已经被合并过了哦,如果需要重新合并请使用修改肾表")
                 return
@@ -256,13 +257,13 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
         sqaddress=pure_data_dir +'/'+true_group_id + 'sbtable.db'
         conn = sqlite3.connect(sqaddress)
         cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS sb (xh INTEGER PRIMARY KEY AUTOINCREMENT, sstime TEXT, ddltime TEXT, sbname TEXT,include tEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS sb (xh INTEGER PRIMARY KEY AUTOINCREMENT, sstime TEXT, ddltime TEXT, sbname TEXT,include TEXT,dandian INTERGER)")
         current_time = datetime.datetime.now()
         current_time_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
         ddl_time = current_time + datetime.timedelta(days=14)
         ddl_time_str = ddl_time.strftime("%Y-%m-%d %H:%M:%S")
         pblist=','.join(pblist)
-        cursor.execute("INSERT INTO sb (sstime, ddltime, sbname,include) VALUES (?, ?, ?,?)", (current_time_str, ddl_time_str, sb_name,pblist))
+        cursor.execute("INSERT INTO sb (sstime, ddltime, sbname,include,dandian) VALUES (?, ?, ?,?,?)", (current_time_str, ddl_time_str, sb_name,pblist,dandian))
         cursor.execute("SELECT xh FROM sb WHERE sbname = ?", (sb_name,))
         result_xh = cursor.fetchone()
         xh=result_xh[0]
