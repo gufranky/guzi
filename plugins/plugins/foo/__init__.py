@@ -1,7 +1,8 @@
 from nonebot import on_command,on_request
 from nonebot_plugin_alconna.uniseg import UniMessage, At,File
-from nonebot.adapters.onebot.v11 import Bot, Event
+from nonebot.adapters.onebot.v11 import Bot, Event,PrivateMessageEvent, GroupMessageEvent
 from nonebot.adapters.onebot.v11 import (MessageSegment)
+from nonebot.rule import is_type
 from nonebot.params import ArgPlainText
 import sqlite3
 from nonebot import require
@@ -14,14 +15,12 @@ import datetime
 import pandas as pd
 import re
 from nonebot.adapters.onebot.v11.event import FriendRequestEvent
-binding = on_command("绑定cn")
-@binding.handle()
-async def handle_binding(event:Event,args: Message = CommandArg()):
+group = is_type(GroupMessageEvent)
+pri=is_type(PrivateMessageEvent)
+async   def in_binding(true_group_id,event,args):
     data_dir = store.get_data_dir("guzi")
     pure_data_dir = data_dir.as_posix()
-    group_id = event.get_session_id()
     user=event.get_user_id()
-    true_group_id = group_id.split('_')[1]
     cn=args.extract_plain_text()
     sqaddress=pure_data_dir +'/'+true_group_id + 'cn.db'
     conn = sqlite3.connect(sqaddress)
@@ -42,8 +41,18 @@ async def handle_binding(event:Event,args: Message = CommandArg()):
             await binding.send("绑定成功")
     cursor.close()
     conn.close()
+binding = on_command("绑定cn",rule=group)
+@binding.handle()
+async def handle_binding(event:Event,args: Message = CommandArg()):
+    group_id = event.get_session_id()
+    true_group_id = group_id.split('_')[1]
+    await in_binding(true_group_id,event,args)
+binding2 = on_command("绑定cn",rule=pri)
+@binding2.handle()
+async def handle_binding2(event:Event,args: Message = CommandArg()):
+    await in_binding("764562701",event,args)
 #绑定cn部分
-def spilttable(table,group_id):
+async def spilttable(table,group_id,bot):
     table=table.split('\n')
     left=table[0].find("【")
     right=table[0].find("】")
@@ -77,18 +86,19 @@ def spilttable(table,group_id):
     data=[row.strip().split('	') for row in table[2:]]
     df = pd.DataFrame(data, columns=gz_class)#todo
     df.to_excel(pure_data_dir +'/'+true_group_id+'_'+str(xh)+'.xlsx', index=False)
+    await bot.upload_group_file(group_id=int(true_group_id),file=pure_data_dir +'/'+true_group_id+'_'+str(xh)+'.xlsx',name=table[0]+'.xlsx')
     return xh
 
 
 
 gettable=on_command("导入排表")
 @gettable.handle()
-async def handle_gettable(event:Event,args: Message = CommandArg()):
+async def handle_gettable(bot:Bot,event:Event,args: Message = CommandArg()):
     await gettable.send("正在导入排表")
     group_id = event.get_session_id()
     user=event.get_user_id()
     if((user=='50191427')| (user=='1301117439')):#todo:添加管理员
-        xh=spilttable(args.extract_plain_text(),group_id)
+        xh=await spilttable(args.extract_plain_text(),group_id,bot)
         await gettable.send("导入成功,他的id是:"+str(xh))
     else:
         await gettable.send("您没有权限导入排表哦")
@@ -208,15 +218,15 @@ async def  callperson(cs_cn_list,sb_name,true_group_id,bot,event):
                     at_list.append(member['user_id'])
                     cs_cn_list.remove(cs_cn)
                     break
-    msg=UniMessage("叮咚，催肾名单:\n")
+    msg=UniMessage("💸叮咚，催肾名单:\n")
     for at in at_list:
         msg+=At("user",at)
-    msg+="\n"+sb_name+" 已经可以交咯，请尽快完成哦"
+    msg+="\n😈"+sb_name+" 已经可以交咯，请尽快完成哦"
     cant_find=""
     for cs_cn in cs_cn_list:
         cant_find+=cs_cn+" "
     if cant_find!="":
-        msg+="\n找不到的cn有:"+cant_find
+        msg+="\n😡找不到的cn有:"+cant_find
     await gaishen.send(await msg.export())
     for user_id in at_list:
         await bot.send_private_msg(user_id=int(user_id),message="这里是【大人收手吧】"+sb_name+" 已经可以交咯，请尽快完成哦")
@@ -261,13 +271,13 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
             for row in result:
                 if row[1] not in cn_list:
                     cn_list[row[1]]={row[2]:1}
-                    cn_price[row[1]]=row[3]+int(dandian) if int(dandian)<=0 else int(dandian)
+                    cn_price[row[1]]=row[3]+float(dandian) if float(dandian)<=0 else float(dandian)
                 else:
                     if row[2] not in cn_list[row[1]]:
                         cn_list[row[1]][row[2]]=1
                     else:
                         cn_list[row[1]][row[2]]+=1
-                    cn_price[row[1]]+=row[3]+int(dandian) if int(dandian)<=0 else int(dandian)
+                    cn_price[row[1]]+=row[3]+float(dandian) if float(dandian)<=0 else float(dandian)
                 muqian=row[5]
                 muqian=muqian.split(',')
                 if(muqian==['0']):
@@ -471,4 +481,163 @@ friendadd=on_request()
 @friendadd.handle()
 async def handle_friendadd(bot:Bot,event:FriendRequestEvent):
     await bot.set_friend_add_request(flag=event.flag, approve=True, remark="")
-    
+    await bot.send_private_msg(user_id=int(event.user_id),message="您好，我是哆来咪，记得绑定cn哦")
+zhuanren=on_command("转让")
+@zhuanren.handle()
+async def handle_zhuanren(bot:Bot,event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    arg=arg.split(' ')
+    group_id = event.get_session_id()
+    user=event.get_user_id()
+    tocn=arg[0]
+    pbxh=int(arg[1])
+    paixu=int(arg[3])
+    zhipin=arg[2]
+    data_dir = store.get_data_dir("guzi")
+    pure_data_dir = data_dir.as_posix()
+    true_group_id = group_id.split('_')[1]
+    sqaddress=pure_data_dir +'/'+true_group_id + 'cn.db'
+    conn = sqlite3.connect(sqaddress)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM table_name WHERE id = ?", (user,))
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    if result:
+        cn=result[0][1]
+        sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+        conn = sqlite3.connect(sqaddress)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM xize WHERE cn= ? AND xh = ? AND peishu = ? AND gz_name=?", (cn,pbxh,paixu,zhipin))
+        result = cursor.fetchone()
+        if result:
+            cursor.execute("CREATE TABLE IF NOT EXISTS zhuanrang (ind INTEGER PRIMARY KEY AUTOINCREMENT, zhuanren TEXT, beizhuren TEXT, xh INTEGER, peishu INTEGER, zhipin TEXT)")
+            cursor.execute("INSERT INTO zhuanrang (zhuanren, beizhuren, xh, peishu, zhipin) VALUES (?, ?, ?, ?, ?)", (cn,tocn,pbxh,paixu,zhipin))
+            conn.commit()
+            cursor.execute("SELECT * FROM zhuanrang WHERE zhuanren = ? AND beizhuren = ? AND xh = ? AND peishu = ? AND zhipin=?", (cn,tocn,pbxh,paixu,zhipin))
+            result = cursor.fetchall()
+            id=result[0][0]
+            await zhuanren.send("转让已经记录，请等待接单者发送/接 "+str(id)+",请注意，在转入之前，这个制品仍然会在您这")
+        else:
+            await zhuanren.send("没有找到符合项，请检查是否为自己的排表或者是否输入错误，格式为/转让 对方cn 排表号 制品 排序")
+    else:
+        await zhuanren.send("您还没有绑定cn哦")
+    cursor.close()
+    conn.close()
+jiedan=on_command("接")
+@jiedan.handle()
+async def handle_jiedan(bot:Bot,event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    group_id = event.get_session_id()
+    user=event.get_user_id()
+    data_dir = store.get_data_dir("guzi")
+    pure_data_dir = data_dir.as_posix()
+    true_group_id = group_id.split('_')[1]
+    sqaddress=pure_data_dir +'/'+true_group_id + 'cn.db'
+    conn = sqlite3.connect(sqaddress)
+    arg=arg.split(' ')
+    id=int(arg[0])
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM table_name WHERE id = ?", (user,))
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    cn=result[0][1]
+    sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+    conn = sqlite3.connect(sqaddress)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM zhuanrang WHERE ind = ?", (id,))
+    result = cursor.fetchall()
+    if result:
+        if (result[0][2]==cn) or (result[0][2]=='0'):
+            cursor.execute("SELECT * FROM xize WHERE xh = ? AND peishu = ? AND gz_name=?", (result[0][3],result[0][4],result[0][5]))
+            result = cursor.fetchone()
+            if result:
+                cursor.execute("UPDATE xize SET cn = ? WHERE ind = ?", (cn,result[0]))
+                cursor.execute("DELETE FROM zhuanrang WHERE ind = ?", (id,))
+                conn.commit()
+                await jiedan.send("接单成功")
+                if result[6]!='0':
+                    await jiedan.send("请注意，这个制品存在未付清的肾哦，请联系管理更新肾表，或者在接单后自行付清")
+            else:
+                await jiedan.send("没有找到符合项，请检查是否为自己的排表或者是否输入错误")
+        else:
+            await jiedan.send("这不是您的转让哦")
+    else:
+        await jiedan.send("没有找到这个转让哦")
+    cursor.close()
+    conn.close()
+diaoluo=on_command("掉落")
+@diaoluo.handle()
+async def handle_diaoluo(bot:Bot,event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    arg=arg.split(' ')
+    group_id = event.get_session_id()
+    user=event.get_user_id()
+    if((user=='50191427')| (user=='1301117439')):
+        pbxh=int(arg[0])
+        paixu=int(arg[2])
+        zhipin=arg[1]
+        data_dir = store.get_data_dir("guzi")
+        pure_data_dir = data_dir.as_posix()
+        true_group_id = group_id.split('_')[1]
+        sqaddress=pure_data_dir +'/'+true_group_id + 'cn.db'
+        conn = sqlite3.connect(sqaddress)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM table_name WHERE id = ?", (user,))
+        result = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        if result:
+            cn=result[0][1]
+            sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+            conn = sqlite3.connect(sqaddress)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM xize WHERE xh = ? AND peishu = ? AND gz_name=?", (pbxh,paixu,zhipin))
+            result = cursor.fetchone()
+            if result:
+                cursor.execute("CREATE TABLE IF NOT EXISTS zhuanrang (ind INTEGER PRIMARY KEY AUTOINCREMENT, zhuanren TEXT, beizhuren TEXT, xh INTEGER, peishu INTEGER, zhipin TEXT)")
+                cursor.execute("INSERT INTO zhuanrang (zhuanren, beizhuren, xh, peishu, zhipin) VALUES (?, ?, ?, ?, ?)", (cn,str(0),pbxh,paixu,zhipin))
+                conn.commit()
+                cursor.execute("SELECT * FROM zhuanrang WHERE zhuanren = ? AND beizhuren = ? AND xh = ? AND peishu = ? AND zhipin=?", (cn,str(0),pbxh,paixu,zhipin))
+                result = cursor.fetchall()
+                id=result[0][0]
+                await zhuanren.send("掉落已经记录，请等待接单者发送/接 "+str(id)+",请注意，在转入之前，这个制品仍然会在原主这")
+            else:
+                await zhuanren.send("没有找到符合项，请检查是否为自己的排表或者是否输入错误，格式为/转让 对方cn 排表号 制品 排序")
+        else:
+            await zhuanren.send("您还没有绑定cn哦")
+        cursor.close()
+        conn.close()
+    else:
+        await zhuanren.send("不是您谁？")
+shanchuzr=on_command("删除转让")
+@shanchuzr.handle()
+async def handle_shanchuzr(event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    group_id = event.get_session_id()
+    user=event.get_user_id()
+    data_dir = store.get_data_dir("guzi")
+    pure_data_dir = data_dir.as_posix()
+    true_group_id = group_id.split('_')[1]
+    sqaddress=pure_data_dir +'/'+true_group_id + 'cn.db'
+    conn = sqlite3.connect(sqaddress)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM table_name WHERE id = ?", (user,))
+    cn=cursor.fetchone()[1]
+    cursor.close()
+    conn.close()
+    sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+    conn = sqlite3.connect(sqaddress)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM zhuanrang WHERE ind = ?", (arg,))
+    result = cursor.fetchone()
+    if result:
+        if result[1]==cn or (user=='50191427')or (user=='1301117439'):
+            cursor.execute("DELETE FROM zhuanrang WHERE ind = ?", (arg,))
+            conn.commit()
+            await shanchuzr.send("删除成功")
+    else:
+        await shanchuzr.send("没有这个转让哦")
+    cursor.close()
+    conn.close()
