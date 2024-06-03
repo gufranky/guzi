@@ -211,17 +211,20 @@ async def  callperson(cs_cn_list,sb_name,true_group_id,bot,event):
             at_list.append(result[0])
     cursor.close()
     conn.close()
+    at_list2=[]
     member_list=await bot.get_group_member_list(group_id=int(true_group_id)) 
     for cs_cn in cs_cn_list:
         for member in member_list:
                 if cs_cn in member['card']:
-                    at_list.append(member['user_id'])
+                    at_list2.append(member['user_id'])
                     cs_cn_list.remove(cs_cn)
                     break
     msg=UniMessage("💸叮咚，催肾名单:\n")
     for at in at_list:
         msg+=At("user",at)
-    msg+="\n😈"+sb_name+" 已经可以交咯，请尽快完成哦"
+    for at in at_list:
+        msg+=At("user",at)
+    msg+="\n😈"+sb_name
     cant_find=""
     for cs_cn in cs_cn_list:
         cant_find+=cs_cn+" "
@@ -229,7 +232,7 @@ async def  callperson(cs_cn_list,sb_name,true_group_id,bot,event):
         msg+="\n😡找不到的cn有:"+cant_find
     await gaishen.send(await msg.export())
     for user_id in at_list:
-        await bot.send_private_msg(user_id=int(user_id),message="这里是【大人收手吧】"+sb_name+" 已经可以交咯，请尽快完成哦")
+        await bot.send_private_msg(user_id=int(user_id),message="这里是【大人收手吧】"+sb_name)
 @hebin.handle()
 async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
     user=event.get_user_id()
@@ -271,13 +274,13 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
             for row in result:
                 if row[1] not in cn_list:
                     cn_list[row[1]]={row[2]:1}
-                    cn_price[row[1]]=row[3]+float(dandian) if float(dandian)<=0 else float(dandian)
+                    cn_price[row[1]]=row[4]+float(dandian) if float(dandian)<=0 else float(dandian)
                 else:
                     if row[2] not in cn_list[row[1]]:
                         cn_list[row[1]][row[2]]=1
                     else:
                         cn_list[row[1]][row[2]]+=1
-                    cn_price[row[1]]+=row[3]+float(dandian) if float(dandian)<=0 else float(dandian)
+                    cn_price[row[1]]+=row[4]+float(dandian) if float(dandian)<=0 else float(dandian)
                 muqian=row[5]
                 muqian=muqian.split(',')
                 if(muqian==['0']):
@@ -297,7 +300,7 @@ async def handle_hebin(bot:Bot,event:Event,args: Message = CommandArg()):
             cn_wx_price[key]=cn_price[key]+0.01 if cn_price[key]<100 else cn_price[key]*1.01
         df = pd.DataFrame({'cn': list(cn_pb.keys()), '物品': list(cn_pb.values()), '支付宝价格': list(cn_price.values()), '微信价格': list(cn_wx_price.values())})
         df.to_excel(pure_data_dir +'/'+true_group_id+'_'+sb_name+'.xlsx', index=False)
-        await callperson(list(cn_pb.keys()),sb_name,true_group_id,bot,event)
+        await callperson(list(cn_pb.keys()),sb_name+" 已经可以交咯，请尽快完成哦",true_group_id,bot,event)
         await bot.upload_group_file(group_id=int(true_group_id),file=pure_data_dir +'/'+true_group_id+'_'+sb_name+'.xlsx',name=sb_name+'.xlsx')
     else:
         await hebin.send("您没有权限合并哦")
@@ -308,6 +311,9 @@ chakan=on_command("查看排表")
 @chakan.handle()
 async def handle_chakan(event:Event,args: Message = CommandArg()):
     arg=args.extract_plain_text()
+    if arg=='':
+        arg=-1
+    else: arg=int(arg)
     group_id = event.get_session_id()
     data_dir = store.get_data_dir("guzi")
     pure_data_dir = data_dir.as_posix()
@@ -318,8 +324,19 @@ async def handle_chakan(event:Event,args: Message = CommandArg()):
     cursor.execute("SELECT * FROM table_name")
     result = cursor.fetchall()
     msg=UniMessage("排表列表:\n")
-    for row in result:
-        msg+=str(row[0])+":"+row[3]+"\n"
+    length=len(result)
+    if arg==-1:
+        start=0
+        end=length
+    else:
+        if arg*10<length:
+            start=arg*10
+            end=(arg+1)*10 if (arg+1)*10<length else length
+        else:
+            start=0
+            end=0
+    for i in range(start,end):
+        msg+=str(result[i][0])+":"+result[i][2]+"\n"
     await chakan.send(await msg.export())
     cursor.close()
     conn.close()
@@ -392,12 +409,13 @@ async def handle_gaishen(bot:Bot,event:Event,args: Message = CommandArg()):
                     yishen=row[5]
                     yishen=yishen.split(',')
                     if sb_id not in yishen:
-                        yishen.append(sb_id)
                         if(yishen==['0']):
-                            yishen="0"
+                            yishen=[sb_id]
                         else:
+                            yishen+=[sb_id]
                             yishen=','.join(yishen)
                         cursor.execute("UPDATE xize SET yishen = ? WHERE ind = ?", (yishen,row[0]))
+        await gaishen.send("改肾成功")
         conn.commit()
         cursor.close()
         conn.close()
@@ -457,26 +475,30 @@ async def handle_cuishen(bot:Bot,event:Event,args: Message = CommandArg()):
     else:   
         tongji=0
         sb_id=arg.split(' ')
-    group_id = event.get_session_id()
-    data_dir = store.get_data_dir("guzi")
-    pure_data_dir = data_dir.as_posix()
-    true_group_id = group_id.split('_')[1]
-    sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
-    conn = sqlite3.connect(sqaddress)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM xize WHERE yishen <> '0'")
-    result = cursor.fetchall()
-    cs_cn_list=[]
-    for row in result:
-        yishen=row[5]
-        yishen=yishen.split(',')
-        if tongji==1 or sb_id in yishen:
-            if row[1] not in cs_cn_list:
-                cs_cn_list.append(row[1])
-    cursor.close()
-    conn.close()
-    await callperson(cs_cn_list,"在【大人收手吧】的肾表",true_group_id,bot,event)
-    await cuishen.send("催肾成功")
+    user=event.get_user_id()
+    if(user=='50191427' or user=='1301117439'):
+        group_id = event.get_session_id()
+        data_dir = store.get_data_dir("guzi")
+        pure_data_dir = data_dir.as_posix()
+        true_group_id = group_id.split('_')[1]
+        sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+        conn = sqlite3.connect(sqaddress)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM xize WHERE yishen <> '0'")
+        result = cursor.fetchall()
+        cs_cn_list=[]
+        for row in result:
+            yishen=row[5]
+            yishen=yishen.split(',')
+            if tongji==1 or sb_id in yishen:
+                if row[1] not in cs_cn_list:
+                    cs_cn_list.append(row[1])
+        cursor.close()
+        conn.close()
+        await callperson(cs_cn_list,"在【大人收手吧】的肾表"+" 已经可以交咯，请尽快完成哦",true_group_id,bot,event)
+        await cuishen.send("催肾成功")
+    else:
+        await cuishen.send("不是您谁？")
 friendadd=on_request()
 @friendadd.handle()
 async def handle_friendadd(bot:Bot,event:FriendRequestEvent):
@@ -641,3 +663,30 @@ async def handle_shanchuzr(event:Event,args: Message = CommandArg()):
         await shanchuzr.send("没有这个转让哦")
     cursor.close()
     conn.close()
+askperson=on_command("通知")
+@askperson.handle()
+async def handle_askperson(bot:Bot,event:Event,args: Message = CommandArg()):
+    arg=args.extract_plain_text()
+    arg=arg.split(' ')
+    neirong=arg[0]
+    pb=arg[1:]
+    group_id = event.get_session_id()
+    user=event.get_user_id()
+    if((user=='50191427')| (user=='1301117439')):
+        data_dir = store.get_data_dir("guzi")
+        pure_data_dir = data_dir.as_posix()
+        true_group_id = group_id.split('_')[1]
+        cs_cn_list=[]
+        sqaddress=pure_data_dir +'/'+true_group_id + 'pbtable.db'
+        conn = sqlite3.connect(sqaddress)
+        cursor = conn.cursor()
+        for pbxh in pb:
+            cursor.execute("SELECT * FROM xize WHERE xh = ?", (pbxh,))
+            result = cursor.fetchall()
+            for row in result:
+                if row[1] not in cs_cn_list:
+                    cs_cn_list.append(row[1])
+        await callperson(cs_cn_list,neirong,true_group_id,bot,event)
+        await askperson.send("通知成功")
+    else:
+        await askperson.send("不是您谁？")
